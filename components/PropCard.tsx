@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PropPrediction } from '../types';
+import TrendChart from './TrendChart';
 
 interface PropCardProps {
     prop: PropPrediction;
@@ -91,9 +92,24 @@ const PropCard: React.FC<PropCardProps> = ({ prop, index, onAdd, isSelected }) =
       </div>
 
       {/* Expanded Content */}
-      <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${expanded ? 'max-h-[500px]' : 'max-h-0'}`}>
+      <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${expanded ? 'max-h-[800px]' : 'max-h-0'}`}>
         <div className="p-5 border-t border-slate-800 bg-black/20 text-sm space-y-4">
             
+            {/* Visualizations */}
+            <div className="grid grid-cols-1 gap-4">
+                <TrendChart data={prop.last5Values} line={prop.line} prediction={prop.prediction} />
+                
+                {prop.opponentRank && (
+                    <div className="flex items-center justify-between bg-slate-900/50 p-3 rounded border border-slate-800">
+                        <span className="text-slate-500 text-xs uppercase font-mono">Matchup Difficulty</span>
+                        <div className="text-right">
+                            <span className="text-white font-bold text-sm font-mono">{prop.opponentRank}</span>
+                            <span className="text-slate-600 text-[10px] block uppercase">Opponent vs Position</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             <div>
                 <span className="text-neon-blue font-mono text-xs uppercase block mb-1">Deep Dive Rationale</span>
                 <p className="text-slate-300 leading-relaxed">{prop.rationale}</p>

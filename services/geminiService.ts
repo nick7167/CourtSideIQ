@@ -136,6 +136,8 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
           "xFactor": "The specific granular detail (e.g. Ref crew calls)",
           "last5History": "4/5", (String showing hit rate in last 5 games)
           "averageLast5": 28.2, (Number, average in last 5)
+          "last5Values": [22, 28, 19, 31, 25], (Array of numbers representing actual stats in last 5 games, oldest to newest)
+          "opponentRank": "28th (Soft)", (String, ranking of opponent vs this position/stat)
           "protocolAnalysis": {
             "refereeFactor": "Specific ref data found",
             "injuryIntel": "Specific injury/beat writer news",

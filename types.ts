@@ -23,6 +23,8 @@ export interface PropPrediction {
   xFactor: string;
   last5History: string; // e.g., "4/5"
   averageLast5: number;
+  last5Values: number[]; // [20, 25, 18, 30, 22]
+  opponentRank: string; // e.g. "28th (Soft)"
   protocolAnalysis: {
     refereeFactor?: string;
     injuryIntel?: string;
