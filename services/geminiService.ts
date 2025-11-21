@@ -90,7 +90,7 @@ export const getUpcomingGames = async (): Promise<Game[]> => {
 
 export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'ALL'): Promise<AnalysisResult> => {
   // We use the Thinking model for the deep dive
-  const modelId = "gemini-3-pro-preview"; 
+  const modelId = "gemini-2.5-flash"; 
   
   const systemPrompt = `
     Act as a relentless NBA sharpshooter and data scientist. I need a 'Glass-Eater' level analysis.
