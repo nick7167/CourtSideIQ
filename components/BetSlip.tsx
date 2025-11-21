@@ -21,7 +21,7 @@ const BetSlip: React.FC<BetSlipProps> = ({ selectedProps, onRemove }) => {
   };
 
   const handleCopy = () => {
-    const text = `🏆 COURTSIDE IQ SLIP 🏆\n\n` + 
+    const text = `🏆 ADREZ IQ SLIP 🏆\n\n` + 
     selectedProps.map(p => `${p.player} ${p.prediction} ${p.line} ${p.stat}`).join('\n') +
     `\n\nEst. Odds: ${calculateOdds()}`;
     

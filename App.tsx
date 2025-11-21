@@ -79,9 +79,9 @@ const App: React.FC = () => {
         <header className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setViewState(ViewState.HOME)}>
              <div className="w-8 h-8 bg-gradient-to-br from-neon-blue to-blue-700 rounded-md flex items-center justify-center">
-                 <span className="font-bold text-black font-mono">IQ</span>
+                 <span className="font-bold text-black font-mono">AZ</span>
              </div>
-             <h1 className="text-2xl font-bold tracking-tight text-white">COURTSIDE <span className="text-neon-blue font-light">IQ</span></h1>
+             <h1 className="text-2xl font-bold tracking-tight text-white">ADREZ <span className="text-neon-blue font-light">IQ</span></h1>
           </div>
           {viewState === ViewState.RESULTS && (
              <div className="flex space-x-2 bg-slate-900 p-1 rounded-lg border border-slate-800">
@@ -113,7 +113,7 @@ const App: React.FC = () => {
                 </h2>
               </div>
               <p className="text-slate-400 max-w-lg text-lg font-light leading-relaxed">
-                Leveraging <span className="text-neon-blue">Gemini 3.0 Thinking</span> & <span className="text-neon-orange">Real-Time Search</span> to execute a 7-point deep dive protocol on every NBA matchup.
+                Deploying advanced <span className="text-neon-blue">Artificial Intelligence</span> & <span className="text-neon-orange">Real-Time Data Synthesis</span> to execute a surgical 7-point deep dive protocol on every NBA matchup.
               </p>
               <button 
                 onClick={handleEnter}
