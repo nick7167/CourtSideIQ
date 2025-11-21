@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { getUpcomingGames, analyzeGameProps } from './services/geminiService';
-import { Game, ViewState, AnalysisResult } from './types';
+import { Game, ViewState, AnalysisResult, PropPrediction } from './types';
 import ThinkingVisualizer from './components/ThinkingVisualizer';
 import GameCard from './components/GameCard';
 import PropCard from './components/PropCard';
+import BetSlip from './components/BetSlip';
+import GameContext from './components/GameContext';
 
 const App: React.FC = () => {
   const [viewState, setViewState] = useState<ViewState>(ViewState.HOME);
@@ -12,6 +14,7 @@ const App: React.FC = () => {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [filter, setFilter] = useState<'OVER' | 'UNDER' | 'ALL'>('ALL');
   const [loadingMessage, setLoadingMessage] = useState<string>("");
+  const [slip, setSlip] = useState<PropPrediction[]>([]);
 
   const handleEnter = async () => {
     setViewState(ViewState.LOADING_GAMES);
@@ -46,11 +49,22 @@ const App: React.FC = () => {
 
   const handleBack = () => {
       setAnalysisResult(null);
+      setSlip([]); // Clear slip on back or keep it? Let's clear for now to avoid confusion between games
       setViewState(ViewState.SELECT_GAME);
   };
 
+  const toggleSlip = (prop: PropPrediction) => {
+      setSlip(prev => {
+          const exists = prev.find(p => p.player === prop.player && p.stat === prop.stat);
+          if (exists) {
+              return prev.filter(p => p !== exists);
+          }
+          return [...prev, prop];
+      });
+  };
+
   return (
-    <div className="min-h-screen bg-court-black text-slate-200 font-sans selection:bg-neon-blue selection:text-black">
+    <div className="min-h-screen bg-court-black text-slate-200 font-sans selection:bg-neon-blue selection:text-black pb-20">
       
       {/* Background Ambience */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -76,8 +90,6 @@ const App: React.FC = () => {
                         key={f}
                         onClick={() => {
                             setFilter(f);
-                            // If we wanted to re-fetch with filter we could, but let's filter client side for speed
-                            // Actually, prompt optimization suggests filtering at generation, but filtering client side preserves tokens.
                         }}
                         className={`px-4 py-1 rounded text-xs font-mono transition-all ${filter === f ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                     >
@@ -123,7 +135,7 @@ const App: React.FC = () => {
             <div className="space-y-6 animate-[slideUp_0.5s]">
               <div className="flex justify-between items-end">
                 <h2 className="text-2xl font-bold text-white">Select Matchup</h2>
-                <span className="text-neon-green text-xs font-mono animate-pulse">● LIVE ODDS DATA AVAILABLE</span>
+                <span className="text-neon-green text-xs font-mono animate-pulse">● LIVE SCHEDULE UPDATED</span>
               </div>
               
               {games.length === 0 ? (
@@ -143,8 +155,8 @@ const App: React.FC = () => {
 
           {/* RESULTS VIEW */}
           {viewState === ViewState.RESULTS && analysisResult && (
-            <div className="space-y-6 animate-[fadeIn_0.5s] pb-10">
-              <div className="flex items-center space-x-4 mb-4">
+            <div className="space-y-6 animate-[fadeIn_0.5s] pb-24">
+              <div className="flex items-center space-x-4 mb-2">
                 <button onClick={handleBack} className="text-slate-500 hover:text-white transition-colors">
                     ← Back
                 </button>
@@ -153,11 +165,19 @@ const App: React.FC = () => {
                 </h2>
               </div>
 
+              <GameContext context={analysisResult.marketContext} />
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {analysisResult.props
                     .filter(p => filter === 'ALL' || p.prediction === filter)
                     .map((prop, idx) => (
-                    <PropCard key={idx} prop={prop} index={idx} />
+                    <PropCard 
+                        key={idx} 
+                        prop={prop} 
+                        index={idx} 
+                        onAdd={toggleSlip}
+                        isSelected={slip.some(p => p.player === prop.player && p.stat === prop.stat)}
+                    />
                 ))}
               </div>
 
@@ -185,6 +205,11 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
+          )}
+          
+          {/* BET SLIP COMPONENT */}
+          {viewState === ViewState.RESULTS && (
+              <BetSlip selectedProps={slip} onRemove={toggleSlip} />
           )}
 
         </main>

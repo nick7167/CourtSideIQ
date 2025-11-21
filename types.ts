@@ -6,6 +6,12 @@ export interface Game {
   date: string;
 }
 
+export interface MarketContext {
+  spread: string;
+  total: string;
+  summary: string;
+}
+
 export interface PropPrediction {
   player: string;
   team: string;
@@ -15,6 +21,8 @@ export interface PropPrediction {
   confidence: number; // 1-10
   rationale: string;
   xFactor: string;
+  last5History: string; // e.g., "4/5"
+  averageLast5: number;
   protocolAnalysis: {
     refereeFactor?: string;
     injuryIntel?: string;
@@ -25,6 +33,7 @@ export interface PropPrediction {
 
 export interface AnalysisResult {
   game: Game;
+  marketContext: MarketContext;
   props: PropPrediction[];
   sources: Source[];
 }

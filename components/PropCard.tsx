@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import { PropPrediction } from '../types';
 
-const PropCard: React.FC<{ prop: PropPrediction; index: number }> = ({ prop, index }) => {
+interface PropCardProps {
+    prop: PropPrediction;
+    index: number;
+    onAdd: (prop: PropPrediction) => void;
+    isSelected: boolean;
+}
+
+const PropCard: React.FC<PropCardProps> = ({ prop, index, onAdd, isSelected }) => {
   const [expanded, setExpanded] = useState(false);
   const isOver = prop.prediction === 'OVER';
   const colorClass = isOver ? 'text-neon-green' : 'text-neon-red';
@@ -10,15 +17,30 @@ const PropCard: React.FC<{ prop: PropPrediction; index: number }> = ({ prop, ind
 
   return (
     <div 
-        className={`glass-panel rounded-xl overflow-hidden transition-all duration-500 hover:border-slate-500 ${borderClass}`}
+        className={`glass-panel rounded-xl overflow-hidden transition-all duration-500 hover:border-slate-500 relative ${borderClass}`}
         style={{ animationDelay: `${index * 100}ms` }}
     >
+      {/* Selection Indicator */}
+      <button 
+        onClick={(e) => {
+            e.stopPropagation();
+            onAdd(prop);
+        }}
+        className={`absolute top-3 right-3 z-20 p-2 rounded-full transition-all ${isSelected ? 'bg-neon-blue text-black scale-110 shadow-[0_0_10px_#00f0ff]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+      >
+         {isSelected ? (
+             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+         ) : (
+             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+         )}
+      </button>
+
       {/* Header */}
       <div 
         className={`p-5 bg-gradient-to-r ${bgClass} to-transparent cursor-pointer`}
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex justify-between items-start">
+        <div className="flex justify-between items-start pr-10">
           <div>
              <h4 className="text-sm text-slate-400 font-mono mb-1">{prop.team}</h4>
              <h3 className="text-xl font-bold text-white font-sans">{prop.player}</h3>
@@ -31,7 +53,26 @@ const PropCard: React.FC<{ prop: PropPrediction; index: number }> = ({ prop, ind
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between">
+        {/* Stats Row */}
+        <div className="flex items-center space-x-4 mt-4 mb-2">
+             {prop.last5History && (
+                 <div className="flex items-center space-x-2 bg-black/30 px-2 py-1 rounded border border-white/5">
+                    <span className="text-[10px] text-slate-400 uppercase font-mono">L5 Trend</span>
+                    <span className={`text-xs font-bold font-mono ${
+                        (isOver && parseInt(prop.last5History) >= 3) || (!isOver && parseInt(prop.last5History) <= 2) 
+                        ? 'text-neon-green' : 'text-orange-400'
+                    }`}>
+                        {prop.last5History}
+                    </span>
+                 </div>
+             )}
+             <div className="flex items-center space-x-2 bg-black/30 px-2 py-1 rounded border border-white/5">
+                <span className="text-[10px] text-slate-400 uppercase font-mono">Avg L5</span>
+                <span className="text-xs font-bold text-white font-mono">{prop.averageLast5}</span>
+             </div>
+        </div>
+
+        <div className="mt-2 flex items-center justify-between">
            <div className="flex items-center space-x-2">
                 <div className="flex space-x-0.5">
                     {[...Array(10)].map((_, i) => (
@@ -43,7 +84,7 @@ const PropCard: React.FC<{ prop: PropPrediction; index: number }> = ({ prop, ind
                 </div>
                 <span className="text-xs text-slate-400 font-mono">CONFIDENCE {prop.confidence}/10</span>
            </div>
-           <span className="text-xs text-slate-500 underline decoration-slate-700 underline-offset-4">
+           <span className="text-xs text-slate-500 underline decoration-slate-700 underline-offset-4 hover:text-neon-blue transition-colors">
               {expanded ? 'HIDE INTEL' : 'VIEW INTEL'}
            </span>
         </div>

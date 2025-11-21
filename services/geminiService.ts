@@ -25,9 +25,27 @@ const extractJson = (text: string): any => {
        try {
         return JSON.parse(arrayMatch[0]);
       } catch (e3) {
-         throw new Error("Could not find valid JSON array");
+         // Try object match
+         const objectMatch = text.match(/\{[\s\S]*\}/);
+         if (objectMatch) {
+            try {
+                return JSON.parse(objectMatch[0]);
+            } catch (e4) {
+                throw new Error("Could not find valid JSON object");
+            }
+         }
+         throw new Error("Could not find valid JSON");
       }
     }
+    // Try object match fallback
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+     if (objectMatch) {
+        try {
+            return JSON.parse(objectMatch[0]);
+        } catch (e4) {
+            throw new Error("Could not find valid JSON object");
+        }
+     }
     throw new Error("Response was not valid JSON");
   }
 };
@@ -54,7 +72,6 @@ export const getUpcomingGames = async (): Promise<Game[]> => {
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
-        // responseSchema is not allowed with googleSearch, so we rely on prompt engineering + manual parsing
       },
     });
 
@@ -63,7 +80,7 @@ export const getUpcomingGames = async (): Promise<Game[]> => {
     return games;
   } catch (error) {
     console.error("Error fetching games:", error);
-    // Fallback data for demo purposes if API fails or Search returns garbage
+    // Fallback data for demo purposes
     return [
       { id: '1', homeTeam: 'Boston Celtics', awayTeam: 'New York Knicks', time: '7:30 PM ET', date: 'Tonight' },
       { id: '2', homeTeam: 'Los Angeles Lakers', awayTeam: 'Minnesota Timberwolves', time: '10:00 PM ET', date: 'Tonight' },
@@ -98,8 +115,15 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
     Generate a 'Knitty-Gritty Acca' with 4-6 high probability player props.
     ${filter !== 'ALL' ? `ONLY show ${filter} props.` : ''}
     
+    ALSO, provide the General Market Context for the game (Spread, Total).
+    
     Return the output as a STRICT JSON Object with the following structure:
     {
+      "marketContext": {
+        "spread": "Team -X.X",
+        "total": "O/U XXX.X",
+        "summary": "One sentence summary of where the sharp money is."
+      },
       "props": [
         {
           "player": "Player Name",
@@ -110,6 +134,8 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
           "confidence": 8 (1-10 number),
           "rationale": "Short summary of the deep dive findings.",
           "xFactor": "The specific granular detail (e.g. Ref crew calls)",
+          "last5History": "4/5", (String showing hit rate in last 5 games)
+          "averageLast5": 28.2, (Number, average in last 5)
           "protocolAnalysis": {
             "refereeFactor": "Specific ref data found",
             "injuryIntel": "Specific injury/beat writer news",
@@ -151,6 +177,7 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
 
     return {
       game,
+      marketContext: data.marketContext || { spread: "N/A", total: "N/A", summary: "Market data unavailable" },
       props: data.props || [],
       sources
     };
