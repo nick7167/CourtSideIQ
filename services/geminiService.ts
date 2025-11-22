@@ -123,26 +123,37 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
   
   const systemPrompt = `
     Act as a relentless NBA sharpshooter and data scientist.
-    Protocol:
-    1. Analyze referee foul rates.
-    2. Check injury reports and minutes limits.
-    3. Analyze defensive schemes (Drop vs Hedge).
-    4. Identify sharp money line movements.
-    5. Check usage rates.
+    
+    YOUR GOAL: Provide high-confidence player prop bets with PRECISE, FACTUAL supporting data.
+    
+    CRITICAL DATA PROTOCOL:
+    1. SEARCH ACTUAL GAME LOGS. Do not hallucinate stats. You must find the last 5 specific values for the stat in question.
+    2. SEARCH REFEREE ASSIGNMENTS. Look for "NBA Official Assignments [Date]". If not out, say "Pending" or "Assignments not released".
+    3. CHECK INJURY REPORTS. Look for "NBA Injury Report [Date]".
+    4. ANALYZE MATCHUPS. Look for "[Team] defense vs [Position] stats".
   `;
 
   const userPrompt = `
     Analyze the upcoming NBA game: ${game.awayTeam} @ ${game.homeTeam}.
     Date: ${game.date}.
     
-    Execute the Deep Dive Protocol using Google Search to get REAL-TIME data.
-    
-    Generate 4-6 high probability player props.
-    ${filter !== 'ALL' ? `ONLY show ${filter} props.` : ''}
-    
-    ALSO, provide the General Market Context (Spread, Total).
-    
-    Return the output as a STRICT JSON Object. 
+    STEP 1: GENERAL MARKET SCAN
+    - Search for "NBA odds ${game.awayTeam} vs ${game.homeTeam} spread total".
+    - Identify the Spread, Total, and any "Sharp Money" trends.
+
+    STEP 2: REFEREE INTEL
+    - Search for "NBA referee assignments ${game.date}".
+    - Note: Assignments are often released the morning of the game. If unknown, state "Assignments pending".
+
+    STEP 3: PLAYER PROP MINING ${filter !== 'ALL' ? `(Focus ONLY on ${filter} props)` : ''}
+    - Find 4-6 high probability props.
+    - FOR EACH PLAYER SELECTED, YOU MUST:
+      - SEARCH: "[Player Name] game log last 5 games".
+      - EXTRACT: The EXACT numerical values for the stat (e.g., Points) from the last 5 games to populate 'last5Values'.
+      - SEARCH: "[Opponent Team] defense vs [Position]".
+
+    RETURN FORMAT:
+    Return a STRICT JSON Object. 
     Structure:
     {
       "marketContext": {
@@ -165,7 +176,7 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
           "last5Values": [22, 28, 19, 31, 25],
           "opponentRank": "28th (Soft)",
           "protocolAnalysis": {
-            "refereeFactor": "Ref data",
+            "refereeFactor": "Ref data or Pending",
             "injuryIntel": "Injury news",
             "schemeMismatch": "Tactical finding",
             "sharpMoney": "Line movement"
@@ -177,7 +188,7 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
     IMPORTANT RULES:
     1. Output ONLY valid JSON. No markdown blocks. No comments.
     2. Ensure all keys and string values are quoted.
-    3. "last5Values" MUST be an array of numbers (e.g., [20, 10, 15]). If data is missing, return an empty array []. DO NOT leave it empty or null.
+    3. "last5Values" MUST be an array of numbers. If data is absolutely unfound, return []. DO NOT leave it null.
     4. Do not output trailing commas.
   `;
 
@@ -187,7 +198,8 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
       contents: userPrompt,
       config: {
         tools: [{ googleSearch: {} }],
-        thinkingConfig: { thinkingBudget: 2048 }, 
+        // Increased thinking budget to allow for multiple search steps (Game logs, Refs, Odds)
+        thinkingConfig: { thinkingBudget: 8192 }, 
         systemInstruction: systemPrompt,
       },
     });
@@ -198,8 +210,10 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
     // Post-process and sanitize the data
     const sanitizedProps = (data.props || []).map((p: any) => ({
         ...p,
-        // Ensure last5Values is always an array
-        last5Values: Array.isArray(p.last5Values) ? p.last5Values : [],
+        // Ensure last5Values is always an array of numbers
+        last5Values: Array.isArray(p.last5Values) 
+            ? p.last5Values.map((v: any) => Number(v) || 0) 
+            : [],
         // Ensure other required fields exist with fallbacks
         protocolAnalysis: p.protocolAnalysis || {},
         confidence: typeof p.confidence === 'number' ? p.confidence : 5
