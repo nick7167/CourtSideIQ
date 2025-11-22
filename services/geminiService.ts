@@ -1,60 +1,89 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Game, AnalysisResult, PropPrediction, Source } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Helper to strip Markdown code blocks if the model returns them despite instructions
+// Robust JSON extraction to handle common LLM formatting issues
 const extractJson = (text: string): any => {
+  let cleanText = text.trim();
+  
+  // 1. Remove markdown code blocks if present
+  const codeBlockMatch = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    cleanText = codeBlockMatch[1].trim();
+  }
+
+  // 2. Find the outermost JSON structure (Object {} or Array [])
+  const firstBrace = cleanText.indexOf('{');
+  const firstBracket = cleanText.indexOf('[');
+  
+  let startIndex = -1;
+  let endIndex = -1;
+  
+  // Determine if we are looking for an object or array
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIndex = firstBrace;
+    endIndex = cleanText.lastIndexOf('}');
+  } else if (firstBracket !== -1) {
+    startIndex = firstBracket;
+    endIndex = cleanText.lastIndexOf(']');
+  }
+
+  if (startIndex !== -1 && endIndex !== -1) {
+    cleanText = cleanText.substring(startIndex, endIndex + 1);
+  } else {
+    // If we can't find brackets, it's definitely not valid JSON
+    throw new Error("No JSON structure found in response");
+  }
+
+  // 3. Parse
   try {
-    // Try parsing directly
-    return JSON.parse(text);
+    return JSON.parse(cleanText);
   } catch (e) {
-    // Try extracting from code blocks
-    const match = text.match(/```json\s*([\s\S]*?)\s*```/);
-    if (match) {
-      try {
-        return JSON.parse(match[1]);
-      } catch (e2) {
-        console.error("Failed to parse extracted JSON", e2);
-        throw new Error("Invalid JSON format in response");
-      }
+    // 4. Attempt to fix common JSON errors from LLMs
+    try {
+       let fixedText = cleanText
+        // Fix specific error where last5Values is empty like "last5Values":,
+        .replace(/"last5Values"\s*:\s*,/g, '"last5Values": [],')
+        // Fix generic missing values e.g., "key":, -> "key": null,
+        .replace(/":\s*,/g, '": null,')
+        // Fix trailing commas: , } -> } and , ] -> ]
+        .replace(/,\s*([\]}])/g, '$1');
+       
+       return JSON.parse(fixedText);
+    } catch (e2) {
+       console.error("JSON Parse Failed. Text:", cleanText);
+       throw new Error("Could not find valid JSON object");
     }
-    // Fallback: look for array start/end
-    const arrayMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (arrayMatch) {
-       try {
-        return JSON.parse(arrayMatch[0]);
-      } catch (e3) {
-         // Try object match
-         const objectMatch = text.match(/\{[\s\S]*\}/);
-         if (objectMatch) {
-            try {
-                return JSON.parse(objectMatch[0]);
-            } catch (e4) {
-                throw new Error("Could not find valid JSON object");
-            }
-         }
-         throw new Error("Could not find valid JSON");
-      }
-    }
-    // Try object match fallback
-    const objectMatch = text.match(/\{[\s\S]*\}/);
-     if (objectMatch) {
-        try {
-            return JSON.parse(objectMatch[0]);
-        } catch (e4) {
-            throw new Error("Could not find valid JSON object");
-        }
-     }
-    throw new Error("Response was not valid JSON");
   }
 };
 
 export const getUpcomingGames = async (): Promise<Game[]> => {
-  const modelId = "gemini-2.5-flash"; // Use fast model for simple retrieval
+  const modelId = "gemini-2.5-flash"; 
+  
+  // Get explicit dates
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const dateOptions: Intl.DateTimeFormatOptions = { 
+    weekday: 'long', 
+    month: 'long', 
+    day: 'numeric',
+    timeZone: 'America/New_York'
+  };
+  const todayStr = today.toLocaleDateString('en-US', dateOptions);
+  const tomorrowStr = tomorrow.toLocaleDateString('en-US', dateOptions);
+
   const prompt = `
-    Find the NBA games scheduled for today and tomorrow. 
-    If no games are today, find the next scheduled slate.
+    Find the OFFICIAL and COMPLETE NBA schedule for Today (${todayStr}) and Tomorrow (${tomorrowStr}).
+    
+    TASK:
+    1. Search for "NBA Schedule ${todayStr}" and "NBA Schedule ${tomorrowStr}".
+    2. List EVERY game scheduled.
+    3. If there are no games today, clearly list the games for the next available game day.
+
     Return a strictly formatted JSON array of objects.
     Each object must have:
     - id: a unique string (e.g., "LAL-GSW-20240520")
@@ -63,7 +92,7 @@ export const getUpcomingGames = async (): Promise<Game[]> => {
     - time: string (e.g., "7:30 PM ET")
     - date: string (e.g., "Oct 24")
     
-    Do not include any markdown formatting or explanation. Just the JSON.
+    Output ONLY the JSON array. No markdown, no explanation.
   `;
 
   try {
@@ -76,79 +105,80 @@ export const getUpcomingGames = async (): Promise<Game[]> => {
     });
 
     const text = response.text || "[]";
-    const games = extractJson(text);
-    return games;
+    try {
+        const games = extractJson(text);
+        return Array.isArray(games) ? games : [];
+    } catch (e) {
+        console.warn("JSON extraction failed for games, returning empty list", e);
+        return [];
+    }
   } catch (error) {
     console.error("Error fetching games:", error);
-    // Fallback data for demo purposes
-    return [
-      { id: '1', homeTeam: 'Boston Celtics', awayTeam: 'New York Knicks', time: '7:30 PM ET', date: 'Tonight' },
-      { id: '2', homeTeam: 'Los Angeles Lakers', awayTeam: 'Minnesota Timberwolves', time: '10:00 PM ET', date: 'Tonight' },
-    ];
+    return [];
   }
 };
 
 export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'ALL'): Promise<AnalysisResult> => {
-  // We use the Thinking model for the deep dive
   const modelId = "gemini-2.5-flash"; 
   
   const systemPrompt = `
-    Act as a relentless NBA sharpshooter and data scientist. I need a 'Glass-Eater' level analysis.
-    Ignore basic averages. Dig into the granular data.
-    
-    PROTOCOL:
-    1. Whistle Factor: Check assigned Crew Chief for foul rates.
-    2. Beat Writer Intel: Minutes limits, injuries.
-    3. Scheme Wars: Drop vs Hedge, Transition defense ranks.
-    4. Vegas Trap: Line movement analysis (Sharp vs Public).
-    5. Roster Context: Usage rates without starters.
-    6. Narrative: Revenge games, milestones.
-    7. Social Sentiment: Sharp capper consensus.
+    Act as a relentless NBA sharpshooter and data scientist.
+    Protocol:
+    1. Analyze referee foul rates.
+    2. Check injury reports and minutes limits.
+    3. Analyze defensive schemes (Drop vs Hedge).
+    4. Identify sharp money line movements.
+    5. Check usage rates.
   `;
 
   const userPrompt = `
     Analyze the upcoming NBA game: ${game.awayTeam} @ ${game.homeTeam}.
     Date: ${game.date}.
     
-    Execute the 7-Point Deep Dive Protocol using Google Search to get REAL-TIME data for this specific matchup.
+    Execute the Deep Dive Protocol using Google Search to get REAL-TIME data.
     
-    Generate a 'Knitty-Gritty Acca' with 4-6 high probability player props.
+    Generate 4-6 high probability player props.
     ${filter !== 'ALL' ? `ONLY show ${filter} props.` : ''}
     
-    ALSO, provide the General Market Context for the game (Spread, Total).
+    ALSO, provide the General Market Context (Spread, Total).
     
-    Return the output as a STRICT JSON Object with the following structure:
+    Return the output as a STRICT JSON Object. 
+    Structure:
     {
       "marketContext": {
         "spread": "Team -X.X",
         "total": "O/U XXX.X",
-        "summary": "One sentence summary of where the sharp money is."
+        "summary": "One sentence summary of sharp money."
       },
       "props": [
         {
           "player": "Player Name",
           "team": "Team Name",
-          "stat": "Points" or "Rebounds" etc,
-          "line": 24.5 (number),
+          "stat": "Stat Name (e.g. Points)",
+          "line": 24.5,
           "prediction": "OVER" or "UNDER",
-          "confidence": 8 (1-10 number),
-          "rationale": "Short summary of the deep dive findings.",
-          "xFactor": "The specific granular detail (e.g. Ref crew calls)",
-          "last5History": "4/5", (String showing hit rate in last 5 games)
-          "averageLast5": 28.2, (Number, average in last 5)
-          "last5Values": [22, 28, 19, 31, 25], (Array of numbers representing actual stats in last 5 games, oldest to newest)
-          "opponentRank": "28th (Soft)", (String, ranking of opponent vs this position/stat)
+          "confidence": 8,
+          "rationale": "Short summary.",
+          "xFactor": "Specific detail.",
+          "last5History": "4/5",
+          "averageLast5": 28.2,
+          "last5Values": [22, 28, 19, 31, 25],
+          "opponentRank": "28th (Soft)",
           "protocolAnalysis": {
-            "refereeFactor": "Specific ref data found",
-            "injuryIntel": "Specific injury/beat writer news",
+            "refereeFactor": "Ref data",
+            "injuryIntel": "Injury news",
             "schemeMismatch": "Tactical finding",
-            "sharpMoney": "Line movement data"
+            "sharpMoney": "Line movement"
           }
         }
       ]
     }
     
-    ENSURE VALID JSON. Do not include markdown keys like \`\`\`json.
+    IMPORTANT RULES:
+    1. Output ONLY valid JSON. No markdown blocks. No comments.
+    2. Ensure all keys and string values are quoted.
+    3. "last5Values" MUST be an array of numbers (e.g., [20, 10, 15]). If data is missing, return an empty array []. DO NOT leave it empty or null.
+    4. Do not output trailing commas.
   `;
 
   try {
@@ -157,7 +187,7 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
       contents: userPrompt,
       config: {
         tools: [{ googleSearch: {} }],
-        thinkingConfig: { thinkingBudget: 4096 }, // Allocate budget for deep reasoning
+        thinkingConfig: { thinkingBudget: 2048 }, 
         systemInstruction: systemPrompt,
       },
     });
@@ -165,7 +195,16 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
     const text = response.text || "{}";
     const data = extractJson(text);
     
-    // Extract sources if available
+    // Post-process and sanitize the data
+    const sanitizedProps = (data.props || []).map((p: any) => ({
+        ...p,
+        // Ensure last5Values is always an array
+        last5Values: Array.isArray(p.last5Values) ? p.last5Values : [],
+        // Ensure other required fields exist with fallbacks
+        protocolAnalysis: p.protocolAnalysis || {},
+        confidence: typeof p.confidence === 'number' ? p.confidence : 5
+    }));
+
     const sources: Source[] = [];
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     
@@ -180,7 +219,7 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
     return {
       game,
       marketContext: data.marketContext || { spread: "N/A", total: "N/A", summary: "Market data unavailable" },
-      props: data.props || [],
+      props: sanitizedProps,
       sources
     };
 

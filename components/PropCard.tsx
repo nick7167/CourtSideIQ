@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { PropPrediction } from '../types';
 import TrendChart from './TrendChart';
@@ -92,11 +93,12 @@ const PropCard: React.FC<PropCardProps> = ({ prop, index, onAdd, isSelected }) =
       </div>
 
       {/* Expanded Content */}
-      <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${expanded ? 'max-h-[800px]' : 'max-h-0'}`}>
+      <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${expanded ? 'max-h-[1000px]' : 'max-h-0'}`}>
         <div className="p-5 border-t border-slate-800 bg-black/20 text-sm space-y-4">
             
             {/* Visualizations */}
             <div className="grid grid-cols-1 gap-4">
+                
                 <TrendChart data={prop.last5Values} line={prop.line} prediction={prop.prediction} />
                 
                 {prop.opponentRank && (
