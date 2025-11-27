@@ -62,35 +62,38 @@ const extractJson = (text: string): any => {
 export const getUpcomingGames = async (): Promise<Game[]> => {
   const modelId = "gemini-2.5-flash"; 
   
-  // Get explicit dates
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const dateOptions: Intl.DateTimeFormatOptions = { 
-    weekday: 'long', 
-    month: 'long', 
-    day: 'numeric',
-    timeZone: 'America/New_York'
+  // Get explicit dates in US Eastern Time (NBA Time)
+  const getETDate = (offsetDays: number = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return d.toLocaleDateString('en-US', { 
+      timeZone: 'America/New_York', 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
   };
-  const todayStr = today.toLocaleDateString('en-US', dateOptions);
-  const tomorrowStr = tomorrow.toLocaleDateString('en-US', dateOptions);
+
+  const todayStr = getETDate(0);
+  const tomorrowStr = getETDate(1);
 
   const prompt = `
     Find the OFFICIAL and COMPLETE NBA schedule for Today (${todayStr}) and Tomorrow (${tomorrowStr}).
     
     TASK:
     1. Search for "NBA Schedule ${todayStr}" and "NBA Schedule ${tomorrowStr}".
-    2. List EVERY game scheduled.
-    3. If there are no games today, clearly list the games for the next available game day.
-
+    2. List EVERY single game scheduled. Do not summarize or pick "top games".
+    3. If today is Nov 27, 2025, look for all games on Nov 27, 2025.
+    
     Return a strictly formatted JSON array of objects.
     Each object must have:
-    - id: a unique string (e.g., "LAL-GSW-20240520")
+    - id: a unique string (e.g., "LAL-GSW-20251127")
     - homeTeam: full team name
     - awayTeam: full team name
-    - time: string (e.g., "7:30 PM ET")
-    - date: string (e.g., "Oct 24")
+    - time: string (e.g., "7:30 PM ET" - MUST be in Eastern Time)
+    - date: string (e.g., "2025-11-27" - MUST be YYYY-MM-DD format)
+    - utcTime: string (e.g., "2025-11-28T00:30:00Z" - ISO 8601 format converted from the ET game time)
     
     Output ONLY the JSON array. No markdown, no explanation.
   `;
@@ -101,6 +104,7 @@ export const getUpcomingGames = async (): Promise<Game[]> => {
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
+        thinkingConfig: { thinkingBudget: 4096 }, // Increased thinking budget to ensure exhaustive list
       },
     });
 
@@ -121,36 +125,91 @@ export const getUpcomingGames = async (): Promise<Game[]> => {
 export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'ALL'): Promise<AnalysisResult> => {
   const modelId = "gemini-2.5-flash"; 
   
+  // Get current date for context in Eastern Time to ensure correct "Today" context for NBA
+  const today = new Date().toLocaleDateString('en-US', { 
+    timeZone: 'America/New_York',
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+  });
+  
   const systemPrompt = `
-    Act as a relentless NBA sharpshooter and data scientist.
-    
-    YOUR GOAL: Provide high-confidence player prop bets with PRECISE, FACTUAL supporting data.
-    
-    CRITICAL DATA PROTOCOL:
-    1. SEARCH ACTUAL GAME LOGS. Do not hallucinate stats. You must find the last 5 specific values for the stat in question.
-    2. SEARCH REFEREE ASSIGNMENTS. Look for "NBA Official Assignments [Date]". If not out, say "Pending" or "Assignments not released".
-    3. CHECK INJURY REPORTS. Look for "NBA Injury Report [Date]".
-    4. ANALYZE MATCHUPS. Look for "[Team] defense vs [Position] stats".
+    **Role:** You are an elite NBA Quantitative Analyst and Betting Handicapper. You do not provide generic advice. You execute a rigorous, multi-step algorithm based on the "NBAstuffer" analytical framework to identify high-value Player Props.
+
+    **Primary Directive:** For every query, you must execute the following **5-Module Analysis Sequence**. If you skip any module, your analysis is incomplete.
+
+    ### **MODULE 1: The Injury & Usage Redistribution Engine (CRITICAL)**
+    * **Step 1: Status Check:** Immediately search for the most recent injury report for both teams. Confirm status: *Out, Doubtful, Questionable, Probable*.
+    * **Step 2: The "Usage Vacuum" Calculation:**
+        * *Concept:* When a High-Usage player (USG% > 20%) is OUT, their possessions do not disappear; they are redistributed.
+        * *Action:* Identify the "Beneficiary."
+            * *If Primary Scorer is OUT:* Look for the #2 Option to see a USG% spike (+4-6%) and increased Shot Attempts. **Target: Points Over.**
+            * *If Primary Playmaker is OUT:* Look for the Secondary Ball Handler to see a massive spike in Touches and Potential Assists. **Target: Assists Over.**
+            * *If Primary Rim Protector is OUT:* Upgrade the Opposing Center’s efficiency (eFG%) and Rebound %. **Target: Opponent Big Man Overs.**
+
+    ### **MODULE 2: The "Schedule Alert" & Context Filter**
+    * **The Fatigue Factor:**
+        * Is the team on a **Back-to-Back (0 Days Rest)**?
+        * Is this their **3rd Game in 4 Nights**?
+        * *Rule:* If YES to either, apply a "Fatigue Penalty" to the player's projected Efficiency (TS%) and Defensive Intensity. Fade "Overs" on tired legs, especially for jump shooters.
+    * **Home/Away Splits:**
+        * Compare the player's TS% and +/- at Home vs. Away.
+        * *Rule:* If the player is a "Role Player," heavily weigh their Home splits (Role players perform significantly better at home).
+    * **Blowout Risk (Game Script):**
+        * Check the Point Spread. If Line > 12.5, calculate "Risk of Sitting 4th Quarter."
+        * *Action:* If Blowout Risk is High, downgrade "Over" props for Superstars (who sit early).
+
+    ### **MODULE 3: The Pace & Possession Normalizer**
+    * **Pace Analysis:** Search for both teams' **Pace (Possessions per 48)**.
+        * *Formula:* (Team A Pace + Team B Pace) / 2 = Projected Game Pace.
+        * *Logic:*
+            * Game Pace > 102.0 = **"Pace Up" Game.** Upgrade projected Points/Rebounds/Assists by 10%.
+            * Game Pace < 98.0 = **"Grind" Game.** Downgrade projected volume.
+    * **Possession Value:**
+        * Don't just count points. Look at **Points Per Possession (PPP)**. If a player has high PPP and the game is "Pace Up," this is a "Green Light" indicator.
+
+    ### **MODULE 4: Advanced Metric Profiling (The "NBAstuffer" Toolkit)**
+    * **Shooting Efficiency:**
+        * Use **True Shooting (TS%)** for Scoring Props to judge overall efficiency.
+        * Use **Effective Field Goal % (eFG%)** specifically for 3-Point Props.
+    * **Rebounding:**
+        * Ignore "Rebounds Per Game." Look at **Rebound Percentage (TRB%)**.
+        * Compare Player TRB% vs. Opponent's **"Rebound Rate Allowed"**.
+    * **Playmaking:**
+        * Ignore "Assists Per Game." Look at **Assist Percentage (AST%)** and **Potential Assists**.
+        * *Matchup:* Does the opponent allow high assists to that specific position?
+
+    ### **MODULE 5: The Matchup Micro-Audit**
+    * **Positional Defense:** Search for "Defense vs Position" stats.
+        * *Example:* "How do the [Opponent Team] rank against [Player Position] in Points Allowed?"
+        * *Advanced:* Look for **Defensive Rating (DRtg)** of the primary defender likely to guard the player.
+    * **History:** Check the last 3 Head-to-Head games. *Note: Weigh recent history (this season) higher than past seasons.*
   `;
 
   const userPrompt = `
     Analyze the upcoming NBA game: ${game.awayTeam} @ ${game.homeTeam}.
-    Date: ${game.date}.
+    Game Date: ${game.date}.
+    Analysis Date: ${today}.
     
-    STEP 1: GENERAL MARKET SCAN
-    - Search for "NBA odds ${game.awayTeam} vs ${game.homeTeam} spread total".
-    - Identify the Spread, Total, and any "Sharp Money" trends.
+    CRITICAL INSTRUCTION: You MUST use Google Search to find REAL-TIME data for ${today}. Do NOT rely on training data for rosters, injuries, or stats.
 
-    STEP 2: REFEREE INTEL
-    - Search for "NBA referee assignments ${game.date}".
-    - Note: Assignments are often released the morning of the game. If unknown, state "Assignments pending".
+    EXECUTE THE 5-MODULE ANALYSIS SEQUENCE:
 
-    STEP 3: PLAYER PROP MINING ${filter !== 'ALL' ? `(Focus ONLY on ${filter} props)` : ''}
-    - Find 4-6 high probability props.
-    - FOR EACH PLAYER SELECTED, YOU MUST:
+    STEP 1: REAL-TIME DATA INGESTION (Force Google Search)
+    - Search for: "NBA injury report ${game.awayTeam} ${game.homeTeam} updated ${today}" (Module 1).
+    - Search for: "NBA starting lineups ${game.awayTeam} vs ${game.homeTeam} today".
+    - Search for: "NBA odds ${game.awayTeam} vs ${game.homeTeam} today" to get Spread/Total (Module 2).
+    - Search for: "${game.awayTeam} pace" and "${game.homeTeam} pace" stats 2025-26 season (Module 3).
+    - Search for: "NBA defense vs position stats 2025-26 season" (Module 5).
+
+    STEP 2: IDENTIFY HIGH-VALUE PROPS ${filter !== 'ALL' ? `(Focus ONLY on ${filter} props)` : ''}
+    - Based on the Usage Vacuum (Module 1) and Pace/Matchup advantages, select 4-6 high-confidence props.
+    - Check for "Traps" (popular lines that fail advanced metrics) and exclude them or note them in the summary.
+    - IMPORTANT: If a player is OUT or QUESTIONABLE, do not recommend an Over prop for them. Focus on the *Beneficiary*.
+
+    STEP 3: DEEP DIVE VALIDATION (Strict Requirement)
+    - FOR EACH SELECTED PLAYER:
       - SEARCH: "[Player Name] game log last 5 games".
-      - EXTRACT: The EXACT numerical values for the stat (e.g., Points) from the last 5 games to populate 'last5Values'.
-      - SEARCH: "[Opponent Team] defense vs [Position]".
+      - EXTRACT: The EXACT numerical values for the stat from the last 5 games to populate 'last5Values'.
+      - APPLY: Fatigue Penalty (Module 2) if Back-to-Back.
 
     RETURN FORMAT:
     Return a STRICT JSON Object. 
@@ -159,7 +218,7 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
       "marketContext": {
         "spread": "Team -X.X",
         "total": "O/U XXX.X",
-        "summary": "One sentence summary of sharp money."
+        "summary": "Brief summary of sharp money and any 'Trap' warnings."
       },
       "props": [
         {
@@ -169,17 +228,17 @@ export const analyzeGameProps = async (game: Game, filter: 'OVER' | 'UNDER' | 'A
           "line": 24.5,
           "prediction": "OVER" or "UNDER",
           "confidence": 8,
-          "rationale": "Short summary.",
-          "xFactor": "Specific detail.",
+          "rationale": "Explain using Usage Vacuum/Pace logic.",
+          "xFactor": "Specific Module 1-5 insight.",
           "last5History": "4/5",
           "averageLast5": 28.2,
           "last5Values": [22, 28, 19, 31, 25],
           "opponentRank": "28th (Soft)",
           "protocolAnalysis": {
-            "refereeFactor": "Ref data or Pending",
-            "injuryIntel": "Injury news",
-            "schemeMismatch": "Tactical finding",
-            "sharpMoney": "Line movement"
+            "refereeFactor": "Ref info (if relevant) or 'N/A'",
+            "injuryIntel": "Module 1 Usage Vacuum details",
+            "schemeMismatch": "Module 5 Matchup details",
+            "sharpMoney": "Module 2 Context/Trap warning"
           }
         }
       ]

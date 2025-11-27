@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Game } from '../types';
 
@@ -7,6 +8,19 @@ interface GameCardProps {
 }
 
 const GameCard: React.FC<GameCardProps> = ({ game, onSelect }) => {
+  
+  // Format time to local
+  const displayTime = React.useMemo(() => {
+    if (game.utcTime) {
+        try {
+            return new Date(game.utcTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+            return game.time;
+        }
+    }
+    return game.time;
+  }, [game.time, game.utcTime]);
+
   return (
     <button
       onClick={() => onSelect(game)}
@@ -16,7 +30,7 @@ const GameCard: React.FC<GameCardProps> = ({ game, onSelect }) => {
       <div className="relative glass-panel rounded-xl p-6 h-full flex flex-col justify-between hover:bg-slate-900/80 transition-colors">
         <div className="flex justify-between items-start mb-4">
             <span className="bg-slate-800 text-slate-400 text-xs font-mono px-2 py-1 rounded border border-slate-700">
-                {game.date} • {game.time}
+                {game.date} • {displayTime}
             </span>
             <div className="h-2 w-2 rounded-full bg-neon-green animate-pulse"></div>
         </div>

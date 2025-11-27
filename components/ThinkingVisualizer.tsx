@@ -25,10 +25,10 @@ const ThinkingVisualizer: React.FC<{ message: string }> = ({ message }) => {
         </p>
         
         <div className="flex flex-col space-y-1 mt-4 text-xs text-gray-500 font-mono text-left w-64 mx-auto opacity-70">
-            <span className="animate-[fade_2s_infinite]">Scanning Beat Writers...</span>
-            <span className="animate-[fade_2s_infinite_200ms]">Analyzing Referee Crew...</span>
-            <span className="animate-[fade_2s_infinite_400ms]">Detecting Sharp Money...</span>
-            <span className="animate-[fade_2s_infinite_600ms]">Reviewing Defensive Schemes...</span>
+            <span className="animate-[fade_2s_infinite]">Running Usage Vacuum Engine...</span>
+            <span className="animate-[fade_2s_infinite_200ms]">Scanning Fatigue & Schedule...</span>
+            <span className="animate-[fade_2s_infinite_400ms]">Calculating Pace Metrics...</span>
+            <span className="animate-[fade_2s_infinite_600ms]">Auditing Defensive Matchups...</span>
         </div>
       </div>
     </div>

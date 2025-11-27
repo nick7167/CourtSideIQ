@@ -5,6 +5,7 @@ export interface Game {
   awayTeam: string;
   time: string;
   date: string;
+  utcTime?: string;
 }
 
 export interface MarketContext {
